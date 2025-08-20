@@ -22,6 +22,9 @@ function ajax_retag()
 				window.setTimeout(ajax_retag, 1000);
 			}
 
+		},
+		error: function(response) {
+			console.log("Error: "+response);
 		}
 	});
 }

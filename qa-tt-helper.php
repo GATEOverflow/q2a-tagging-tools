@@ -8,6 +8,19 @@
 // Tagging Tools helper functions
 class qa_tt_helper
 {
+
+	public static function get_tag_synonyms()
+	{
+		$synonyms = '';
+                $results = qa_db_read_all_assoc(
+                        qa_db_query_sub('SELECT synonym, tag FROM ^tag_synonyms ORDER BY synonym')
+                );
+
+                foreach ($results as $row) {
+                        $synonyms .= $row['synonym'] . ',' . $row['tag'] . "\n";
+		}
+		return $synonyms;
+	}
 	// converts a config string of synonyms to an array [[A,B],[C,D]]
 	public static function synonyms_to_array($config)
 	{

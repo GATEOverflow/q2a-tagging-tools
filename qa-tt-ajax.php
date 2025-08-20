@@ -3,7 +3,7 @@
 	Question2Answer Tagging Tools plugin
 	Copyright (C) 2011 Scott Vivian
 	License: https://www.gnu.org/licenses/gpl.html
-*/
+ */
 
 require_once QA_INCLUDE_DIR . 'app/posts.php';
 require_once QA_INCLUDE_DIR . 'util/string.php';
@@ -24,7 +24,7 @@ class qa_tagging_tools_ajax
 		if ($userlevel < QA_USER_LEVEL_SUPER)
 			return;
 
-		$synonyms = qa_tt_helper::synonyms_to_array(qa_opt('tagging_tools_synonyms'));
+		$synonyms = qa_tt_helper::synonyms_to_array(qa_tt_helper::get_tag_synonyms());                      //qa_opt('tagging_tools_synonyms'));
 		$from = [];
 		foreach ($synonyms as $syn) {
 			$from[] = "'" . qa_db_escape_string($syn['from']) . "'";
@@ -44,8 +44,12 @@ class qa_tagging_tools_ajax
 		$count = qa_db_read_one_assoc($result, true);
 
 		if ($count['total'] == 0) {
+			$this->rename_exam_tags($synonyms);
 			echo '0';
 			return;
+		}
+		else {
+			$this->rename_exam_tags($synonyms);
 		}
 
 		// get some posts to edit
@@ -53,16 +57,49 @@ class qa_tagging_tools_ajax
 		$result = qa_db_query_sub($sql);
 		$questions = qa_db_read_all_assoc($result);
 
-		qa_suspend_event_reports(true); // avoid infinite loop
+		//qa_suspend_event_reports(true); // avoid infinite loop
 		$userid = qa_get_logged_in_userid();
 		foreach ($questions as $q) {
 			$oldtags = qa_tagstring_to_tags(@$q['tags']);
 			$newtags = qa_tt_helper::convert_tags($oldtags, $synonyms);
-			$this->qa_post_set_content($q['postid'], null, null, null, $newtags, null, null, $userid);
+
+			// Normalize both arrays for reliable comparison
+			$old_normalized = array_unique(array_map('trim', $oldtags));
+			$new_normalized = array_unique(array_map('trim', $newtags));
+
+			sort($old_normalized);
+			sort($new_normalized);
+
+			if ($old_normalized !== $new_normalized) {
+				$this->qa_post_set_content($q['postid'], null, null, null, $newtags, null, null, $userid);
+				//qa_post_set_content($q['postid'], null, null, null, $newtags, null, null, $userid);
+			}
+			//$this->qa_post_set_content($q['postid'], null, null, null, $newtags, null, null, $userid);
 		}
-		qa_suspend_event_reports(false);
+		//qa_suspend_event_reports(false);
+
 
 		echo $count['total'];
+	}
+	private function rename_exam_tags($synonyms) {
+		//for exams
+		// get some exam posts to edit
+		//$sql_e_suffix = 'FROM ^exams e, ^posttags t, ^words w WHERE w.wordid=t.wordid AND e.postid=t.postid AND BINARY w.word IN (' . implode(',', $from) . ')';
+		$sql = "SELECT e.postid, e.tag AS tag from ^exams e";
+		$result = qa_db_query_sub($sql);
+		$exams = qa_db_read_all_assoc($result);
+		qa_suspend_event_reports(true); // avoid infinite loop
+		$userid = qa_get_logged_in_userid();
+		foreach ($exams as $e) {
+			$oldtags = qa_tagstring_to_tags(@$e['tag']);
+			$newtags_array = qa_tt_helper::convert_tags($oldtags, $synonyms);
+			$newtags = qa_tags_to_tagstring($newtags_array);
+			if(!trim($newtags)) continue;
+			$usql = "update ^exams set tag = $ where postid = #";
+			$result = qa_db_query_sub($usql, $newtags, $e['postid']);
+			//$this->qa_exam_set_content($e['postid'], null, null, null, $newtags, null, null, $userid);
+		}
+		qa_suspend_event_reports(false);
 	}
 
 	// TEMPORARY duplicate of qa_post_set_content in order to allow saving silently
@@ -93,24 +130,24 @@ class qa_tagging_tools_ajax
 		$text = qa_post_content_to_text($content, $format);
 
 		switch ($oldpost['basetype']) {
-			case 'Q':
-				$tagstring = qa_post_tags_to_tagstring($tags);
-				// SV: added parameters to save silently
-				qa_question_set_content($oldpost, $title, $content, $format, $text, $tagstring, $setnotify, $byuserid, $byhandle, null, $extravalue, $name, false, true);
-				break;
+		case 'Q':
+			$tagstring = qa_post_tags_to_tagstring($tags);
+			// SV: added parameters to save silently
+			qa_question_set_content($oldpost, $title, $content, $format, $text, $tagstring, $setnotify, $byuserid, $byhandle, null, $extravalue, $name, false, true);
+			break;
 
-			case 'A':
-				$question = qa_post_get_full($oldpost['parentid'], 'Q');
-				// SV: added parameters to save silently
-				qa_answer_set_content($oldpost, $content, $format, $text, $setnotify, $byuserid, $byhandle, null, $question, $name, false, true);
-				break;
+		case 'A':
+			$question = qa_post_get_full($oldpost['parentid'], 'Q');
+			// SV: added parameters to save silently
+			qa_answer_set_content($oldpost, $content, $format, $text, $setnotify, $byuserid, $byhandle, null, $question, $name, false, true);
+			break;
 
-			case 'C':
-				$parent = qa_post_get_full($oldpost['parentid'], 'QA');
-				$question = qa_post_parent_to_question($parent);
-				// SV: added parameters to save silently
-				qa_comment_set_content($oldpost, $content, $format, $text, $setnotify, $byuserid, $byhandle, null, $question, $parent, $name, false, true);
-				break;
+		case 'C':
+			$parent = qa_post_get_full($oldpost['parentid'], 'QA');
+			$question = qa_post_parent_to_question($parent);
+			// SV: added parameters to save silently
+			qa_comment_set_content($oldpost, $content, $format, $text, $setnotify, $byuserid, $byhandle, null, $question, $parent, $name, false, true);
+			break;
 		}
 	}
 }

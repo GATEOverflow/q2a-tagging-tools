@@ -3,7 +3,7 @@
 	Question2Answer Tagging Tools plugin
 	Copyright (C) 2011 Scott Vivian
 	License: https://www.gnu.org/licenses/gpl.html
-*/
+ */
 
 require_once QA_INCLUDE_DIR . 'app/posts.php';
 require_once 'qa-tt-helper.php';
@@ -20,7 +20,7 @@ class qa_tagging_tools
 			return;
 
 		// replace tag synonyms
-		$config = trim(qa_opt('tagging_tools_synonyms'));
+		$config = trim(qa_tt_helper::get_tag_synonyms());               //qa_opt('tagging_tools_synonyms'));
 		if (!empty($config)) {
 			$synonyms = qa_tt_helper::synonyms_to_array($config);
 			$question['tags'] = qa_tt_helper::convert_tags($question['tags'], $synonyms);
@@ -113,21 +113,40 @@ class qa_tagging_tools
 		$this->urltoroot = $urltoroot;
 	}
 
+
+function init_queries(array $tableslc): array
+{
+    $queries = [];
+
+    // Full table name with prefix, then compare in lowercase (Q2A passes $tableslc lowercased)
+    $full = qa_db_add_table_prefix('tag_synonyms');
+    if (!in_array(strtolower($full), $tableslc, true)) {
+        $queries[] =
+            'CREATE TABLE IF NOT EXISTS ^tag_synonyms (
+                synonym VARCHAR(80) NOT NULL,
+                tag     VARCHAR(80) NOT NULL,
+                PRIMARY KEY (synonym)
+            ) ENGINE=InnoDB ' . qa_db_default_charset();
+            // qa_db_default_charset() appends the correct "DEFAULT CHARSET=... COLLATE=..." for your install
+    }
+
+    return $queries;
+}
 	public function option_default($option)
 	{
 		switch ($option) {
-			case 'tagging_tools_synonyms':
-				return '';
-			case 'tagging_tools_min_length':
-				return 0;
-			case 'tagging_tools_max_length':
-				return 0;
-			case 'tagging_tools_prevent':
-				return 0;
-			case 'tagging_tools_rep':
-				return 100;
-			case 'tagging_tools_redirect':
-				return 0;
+		case 'tagging_tools_synonyms':
+			return '';
+		case 'tagging_tools_min_length':
+			return 0;
+		case 'tagging_tools_max_length':
+			return 0;
+		case 'tagging_tools_prevent':
+			return 0;
+		case 'tagging_tools_rep':
+			return 100;
+		case 'tagging_tools_redirect':
+			return 0;
 		}
 	}
 
@@ -140,9 +159,37 @@ class qa_tagging_tools
 		if (qa_clicked('tagging_tools_save_button')) {
 			$synonyms =  explode("\n", strtolower(trim(qa_post_text('tagging_tools_synonyms'))));
 			sort($synonyms);
-			$synonyms = array_unique($synonyms);
-			$sorted_synonyms = implode("\n", $synonyms);
-			qa_opt('tagging_tools_synonyms', $sorted_synonyms);
+			$unique_synonyms = array_unique($synonyms);
+
+			qa_db_query_sub('DELETE FROM ^tag_synonyms');
+
+
+			foreach ($unique_synonyms as $line) {
+				$line = trim($line);
+				if ($line === '') {
+					continue;
+				}
+
+				if (strpos($line, ',') !== false) {
+					list($synonym, $target) = array_map('trim', explode(',', $line, 2));
+					$target=rtrim($target, ',');
+				} else {
+					$synonym = $line;
+					$target = '';
+				}
+
+				if ($synonym) {
+					qa_db_query_sub(
+						'INSERT INTO ^tag_synonyms (synonym, tag) VALUES ($, $) ON DUPLICATE KEY UPDATE tag = VALUES(tag)',
+						$synonym,
+						$target
+					);
+				}
+			}
+
+
+			//$sorted_synonyms = implode("\n", $synonyms);
+			//qa_opt('tagging_tools_synonyms', $sorted_synonyms);
 			qa_opt('tagging_tools_min_length', (int) qa_post_text('tagging_tools_min_length'));
 			qa_opt('tagging_tools_max_length', (int) qa_post_text('tagging_tools_max_length'));
 			qa_opt('tagging_tools_prevent', (int) qa_post_text('tagging_tools_prevent'));
@@ -170,6 +217,7 @@ class qa_tagging_tools
 			'tagging_tools_rep' => 'tagging_tools_prevent',
 		]);
 
+		$synonyms = qa_tt_helper::get_tag_synonyms();
 		return [
 			'ok' => $savedMsg,
 			'style' => 'wide',
@@ -179,7 +227,7 @@ class qa_tagging_tools
 					'style' => 'tall',
 					'label' => qa_lang_html('taggingtools/admin_synonyms'),
 					'tags' => 'name="tagging_tools_synonyms" id="tagging_tools_synonyms"',
-					'value' => qa_opt('tagging_tools_synonyms'),
+					'value' => $synonyms, //qa_opt('tagging_tools_synonyms'),
 					'type' => 'textarea',
 					'rows' => 12,
 					'note' => preg_replace('/`(.+?)`/', '<code>$1</code>', qa_lang_html('taggingtools/admin_synonyms_note')),
