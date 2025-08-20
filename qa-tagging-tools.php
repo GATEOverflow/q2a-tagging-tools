@@ -114,24 +114,24 @@ class qa_tagging_tools
 	}
 
 
-function init_queries(array $tableslc): array
-{
-    $queries = [];
+    function init_queries(array $tableslc): array
+    {
+        $queries = [];
 
-    // Full table name with prefix, then compare in lowercase (Q2A passes $tableslc lowercased)
-    $full = qa_db_add_table_prefix('tag_synonyms');
-    if (!in_array(strtolower($full), $tableslc, true)) {
-        $queries[] =
-            'CREATE TABLE IF NOT EXISTS ^tag_synonyms (
-                synonym VARCHAR(80) NOT NULL,
-                tag     VARCHAR(80) NOT NULL,
-                PRIMARY KEY (synonym)
-            ) ENGINE=InnoDB ' . qa_db_default_charset();
-            // qa_db_default_charset() appends the correct "DEFAULT CHARSET=... COLLATE=..." for your install
+        // Full table name with prefix, then compare in lowercase (Q2A passes $tableslc lowercased)
+        $full = qa_db_add_table_prefix('tag_synonyms');
+        if (!in_array(strtolower($full), $tableslc, true)) {
+            $queries[] =
+                'CREATE TABLE IF NOT EXISTS ^tag_synonyms (
+                    synonym VARCHAR(80) NOT NULL,
+                    tag     VARCHAR(80) NOT NULL,
+                    PRIMARY KEY (synonym)
+                )';
+        }
+
+        return $queries;
     }
 
-    return $queries;
-}
 	public function option_default($option)
 	{
 		switch ($option) {
